@@ -72,8 +72,8 @@ def pos_filter(prop, pos):
     return Filter.by_property(prop).less_or_equal(pos)
 
 
-def search_chunks(client, collection, query_vector, reader_pos, pos_prop,
-                  limit=5, extra_filter=None):
+def search_chunks_vec(client, collection, query_vector, reader_pos, pos_prop,
+                      limit=5, extra_filter=None):
     """Vector search with hard position cutoff. Never returns future content."""
     filt = pos_filter(pos_prop, reader_pos)
     if extra_filter is not None:
@@ -86,6 +86,12 @@ def search_chunks(client, collection, query_vector, reader_pos, pos_prop,
         return_metadata=MetadataQuery(distance=True),
     )
     return [o.properties for o in res.objects]
+
+
+def search_chunks(client, collection, query_vector, reader_pos, pos_prop,
+                  limit=5, extra_filter=None):
+    return search_chunks_vec(client, collection, query_vector, reader_pos,
+                             pos_prop, limit=limit, extra_filter=extra_filter)
 
 
 def latest_state(client, character, stat_type, reader_pos):

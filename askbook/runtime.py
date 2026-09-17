@@ -10,7 +10,7 @@ from weaviate.classes.query import Filter, Sort
 from .config import VOLUME, chapter_for_page
 from .gemini import embed_query, generate, extract_json_object
 from .prompts import PROMPT_A_SYSTEM, PROMPT_B_SYSTEM
-from .store import connect, search_chunks
+from .store import connect, search_chunks_vec
 
 INTENTS = {
     "page_summary", "recap_summary", "stat_or_location_lookup",
@@ -61,18 +61,18 @@ def _safe_chunks(rows, reader_pos, pos_key="global_position"):
     return [r for r in rows if r.get(pos_key) is not None and r.get(pos_key) <= reader_pos]
 
 
-def retrieve_novel(client, query_text, reader_pos, limit=5, section=None):
+def retrieve_novel(client, query_vector, reader_pos, limit=5, section=None):
     filt = None
     if section:
         filt = Filter.by_property("section_label").equal(section)
-    rows = search_chunks(client, "NovelChunk", embed_query(query_text),
-                         reader_pos, "global_position", limit=limit, extra_filter=filt)
+    rows = search_chunks_vec(client, "NovelChunk", query_vector,
+                             reader_pos, "global_position", limit=limit, extra_filter=filt)
     return _safe_chunks(rows, reader_pos)
 
 
-def retrieve_wiki(client, query_text, reader_pos, limit=4):
-    rows = search_chunks(client, "WikiChunk", embed_query(query_text),
-                         reader_pos, "global_position_estimate", limit=limit)
+def retrieve_wiki(client, query_vector, reader_pos, limit=4):
+    rows = search_chunks_vec(client, "WikiChunk", query_vector,
+                             reader_pos, "global_position_estimate", limit=limit)
     return _safe_chunks(rows, reader_pos, "global_position_estimate")
 
 
@@ -134,7 +134,17 @@ def ask(question, page, page_text="", history=None, volume=VOLUME):
     reader_pos = page
     chapter = chapter_for_page(page)
     route = route_question(question, {"volume": volume, "chapter": chapter, "page": page})
-    intent, entities, queries = route["intent"], route["entities"], route["queries"]
+    intent, entities = route["intent"], route["entities"]
+    # Quota discipline: cap retrieval queries and embed each unique query ONCE
+    # per question (one vector serves every collection), so a question costs
+    # at most 2 generates + 2 embeds instead of up to 8 calls.
+    queries = (route["queries"] or [question])[:2]
+    vec_cache = {}
+
+    def vec_for(text):
+        if text not in vec_cache:
+            vec_cache[text] = embed_query(text)
+        return vec_cache[text]
 
     if intent == "future_request":
         return {"answer": FUTURE_DECLINE, "intent": intent,
@@ -157,16 +167,17 @@ def ask(question, page, page_text="", history=None, volume=VOLUME):
             sources["state"] = list(merged.values())
         elif intent == "theory_discussion":
             rows = []
-            for q in queries or [question]:
-                rows += retrieve_novel(client, q, reader_pos, limit=4)
+            for q in queries:
+                rows += retrieve_novel(client, vec_for(q), reader_pos, limit=4)
             novel_ctx = fmt_novel(rows)
             sources["novel"] = rows
         else:  # recap_summary, character_profile, meta_commentary(fallback below)
             if intent in ("recap_summary", "character_profile"):
                 rows, wrows = [], []
-                for q in queries or [question]:
-                    rows += retrieve_novel(client, q, reader_pos, limit=4)
-                    wrows += retrieve_wiki(client, q, reader_pos, limit=3)
+                for q in queries:
+                    v = vec_for(q)
+                    rows += retrieve_novel(client, v, reader_pos, limit=4)
+                    wrows += retrieve_wiki(client, v, reader_pos, limit=3)
                 novel_ctx = fmt_novel(rows)
                 wiki_ctx = fmt_wiki(wrows)
                 sources["novel"], sources["wiki"] = rows, wrows

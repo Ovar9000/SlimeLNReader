@@ -6,8 +6,12 @@ import os
 import sys
 import json
 import urllib.parse
+import warnings
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 import pymupdf
+
+# Cosmetic third-party noise on stderr (weaviate client import chain)
+warnings.filterwarnings("ignore", message=".*httpx module is deprecated.*")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_PATH = os.path.join(BASE_DIR, "Volume_22_MTL.pdf")
@@ -235,11 +239,16 @@ class FlipbookHTTPRequestHandler(SimpleHTTPRequestHandler):
                 return self.send_api_error(500, f"Could not read page text: {e}")
             try:
                 from askbook import runtime
+                from askbook.gemini import QuotaExceededError
                 result = runtime.ask(question, page, page_text=page_text, history=history)
             except ImportError as e:
                 return self.send_api_error(503, f"Reading companion not installed: {e}")
             except ConnectionError as e:
                 return self.send_api_error(503, f"Reading companion store unreachable: {e}")
+            except QuotaExceededError:
+                return self.send_api_error(
+                    429, "The AI service is rate-limited right now — "
+                         "please wait a minute and try again.")
             except RuntimeError as e:
                 return self.send_api_error(502, f"Reading companion error: {e}")
             except Exception as e:

@@ -10,6 +10,10 @@ from .config import load_api_key, EMBED_MODEL, CHAT_MODEL
 _API = "https://generativelanguage.googleapis.com/v1beta"
 
 
+class QuotaExceededError(RuntimeError):
+    """Raised when Gemini rate/quota limits are exhausted after backoff."""
+
+
 def _retry_delay(err_body, attempt):
     m = re.search(r'"retryDelay"\s*:\s*"(\d+)s"', err_body)
     if m:
@@ -21,6 +25,7 @@ def _post(path, payload, timeout=60, tries=3):
     key = load_api_key()
     body = json.dumps(payload).encode("utf-8")
     last = None
+    saw_429 = False
     for attempt in range(tries):
         try:
             req = urllib.request.Request(
@@ -37,12 +42,16 @@ def _post(path, payload, timeout=60, tries=3):
             if e.code in (400, 401, 403):
                 raise RuntimeError(last)
             if e.code == 429:
+                saw_429 = True
                 time.sleep(_retry_delay(err, attempt))
                 continue
             time.sleep(2 * (attempt + 1))
         except Exception as e:  # network blips
             last = str(e)
             time.sleep(2 * (attempt + 1))
+    if saw_429:
+        raise QuotaExceededError(
+            "Gemini rate limit still exhausted after backoff.")
     raise RuntimeError(f"Gemini call failed after {tries} tries: {last}")
 
 
@@ -75,6 +84,10 @@ def _embed_batch(batch, task_type, tries=6):
             if len(embs) != len(batch):
                 raise RuntimeError("short embedding batch")
             return [e["values"] for e in embs]
+        except QuotaExceededError as e:
+            last = str(e)
+            time.sleep(_retry_delay(last, attempt))
+            continue
         except RuntimeError as e:
             last = str(e)
             if "429" in last:

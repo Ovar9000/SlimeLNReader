@@ -50,6 +50,36 @@ def test_static_templates():
     check("help-no-spoiler-promise", "no spoiler" in META_APP_HELP.lower())
 
 
+def test_quota_error_type():
+    """Persistent 429s must surface as QuotaExceededError (mapped to a
+    friendly chat message by the server), never as a raw API blob."""
+    import io
+    import urllib.error
+    import urllib.request
+    from askbook import gemini
+    real_urlopen, real_sleep = urllib.request.urlopen, gemini.time.sleep
+    body = (b'{"error": {"code": 429, "message": "quota exhausted", '
+            b'"details": [{"@type": "t", "retryDelay": "0s"}]}}')
+
+    def fake_429(req, timeout=None):
+        raise urllib.error.HTTPError(
+            req.full_url, 429, "Too Many", {}, io.BytesIO(body))
+
+    urllib.request.urlopen = fake_429
+    gemini.time.sleep = lambda s: None
+    try:
+        try:
+            gemini._post("/models/x:generateContent", {}, timeout=5, tries=2)
+            check("quota-error-type", False, "no exception raised")
+        except gemini.QuotaExceededError:
+            check("quota-error-type", True)
+        except Exception as e:
+            check("quota-error-type", False, f"wrong type: {type(e).__name__}")
+    finally:
+        urllib.request.urlopen = real_urlopen
+        gemini.time.sleep = real_sleep
+
+
 def test_store_ops():
     from askbook.store import connect, search_chunks, latest_state
     from weaviate.classes.query import Filter
@@ -127,6 +157,7 @@ def main():
     test_spoiler_filter()
     test_json_helpers()
     test_static_templates()
+    test_quota_error_type()
     test_store_ops()
     if args.live:
         run_live()
