@@ -1189,8 +1189,9 @@ html, body {
   width: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  display: flex;
-  justify-content: center;
+  /* block layout (not flex): a stretched flex item would lock the article
+     to viewport height and let content spill past the white background */
+  display: block;
   padding: 14px 16px 30px;
   scroll-behavior: smooth;
 }
@@ -1198,6 +1199,7 @@ html, body {
 .reader-article {
   width: 100%;
   max-width: var(--reader-maxw, 680px);
+  margin: 0 auto;
   background: #fdfcf8;
   color: #1c1917;
   border-radius: 12px;

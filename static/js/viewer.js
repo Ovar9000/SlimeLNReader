@@ -33,7 +33,7 @@
     currentPage: 1, // 1-based page number
     totalPages: TOTAL_PAGES,
     viewMode: 'reader', // 'reader' (reflowable, default) | 'flip' | 'scroll'
-    spreadMode: 'single', // 'double' or 'single' — single default: doubles PDF text size
+    spreadMode: 'double', // 'double' (original FlipHTML5 look) or 'single'
     zoomLevel: 1.0,
     panX: 0,
     panY: 0,
@@ -147,19 +147,17 @@
 
   // --- Persistence ---
   function loadPreferences() {
+    // Read everything first (applying theme saves, so it must go last)
     const savedTheme = localStorage.getItem(STORAGE_KEY_THEME) || 'default';
-    setTheme(savedTheme);
 
     const savedSound = localStorage.getItem(STORAGE_KEY_SOUND);
     if (savedSound !== null) {
       state.soundEnabled = savedSound === 'true';
-      updateSoundUI();
     }
 
     const savedBookmarks = localStorage.getItem(STORAGE_KEY_BOOKMARKS);
     if (savedBookmarks) {
       try { state.bookmarks = JSON.parse(savedBookmarks); } catch (e) { state.bookmarks = []; }
-      renderBookmarks();
     }
 
     const savedMode = localStorage.getItem(STORAGE_KEY_MODE);
@@ -180,6 +178,11 @@
     if (savedJP !== null) state.readerShowJP = savedJP === 'true';
     const savedSerif = localStorage.getItem(STORAGE_KEY_RSERIF);
     if (savedSerif !== null) state.readerSerif = savedSerif === 'true';
+
+    // Apply (these touch the DOM; setTheme saves, now with correct state)
+    setTheme(savedTheme);
+    updateSoundUI();
+    renderBookmarks();
   }
 
   function savePreferences() {
@@ -1028,19 +1031,35 @@
     DOM.flipbookStage.style.transform = `scale(${state.zoomLevel}) translate(${state.panX}px, ${state.panY}px)`;
   }
 
+  // --- Spread Size Layout (explicit px sizing) ---
+  // StPageFlip in "stretch" mode measures its own element to compute page
+  // size. Left to CSS shrink-to-fit it collapses to its min-width floor
+  // (tiny floating book). Pinning exact pixel dimensions makes the book
+  // fill the viewport deterministically and keeps update() idempotent.
+  function layoutFlipbook() {
+    if (!pageFlipInstance) return;
+    try {
+      const dims = calculateFlipbookDimensions();
+      const totalW = dims.isSingle ? dims.width : dims.width * 2;
+      try { pageFlipInstance.getSettings().usePortrait = dims.isSingle; } catch (e) {}
+      DOM.flipbook.style.width = `${totalW}px`;
+      DOM.flipbook.style.height = `${dims.height}px`;
+      // Override the min-width/height floor PageFlip set at construction
+      // (it bakes in the construction-time spread), so the block measures
+      // exactly our dimensions instead of a stale floor.
+      DOM.flipbook.style.minWidth = `${totalW}px`;
+      DOM.flipbook.style.minHeight = `${dims.height}px`;
+      pageFlipInstance.update();
+    } catch (e) {}
+  }
+
   // --- Spread Mode (Single vs Double Page) ---
   function applySpreadMode(notify = true) {
     const isSingle = state.spreadMode === 'single';
     DOM.btnSpreadToggle.classList.toggle('active', isSingle);
     DOM.btnSpreadToggle.setAttribute('data-tooltip', isSingle ? 'Current: 1-Page (Click for 2-Page)' : 'Current: 2-Page Spread (Click for 1-Page)');
 
-    if (pageFlipInstance) {
-      try {
-        const dims = calculateFlipbookDimensions();
-        DOM.flipbookWrapper.style.maxWidth = isSingle ? `${dims.width + 40}px` : '98%';
-        pageFlipInstance.update();
-      } catch(e) {}
-    }
+    layoutFlipbook();
 
     if (notify) showToast(isSingle ? 'Single Page Mode' : 'Double Page Spread Mode');
     savePreferences();
@@ -1178,7 +1197,7 @@
       requestAnimationFrame(() => {
         if (pageFlipInstance) {
           try {
-            pageFlipInstance.update();
+            layoutFlipbook();
             pageFlipInstance.turnToPage(state.currentPage - 1);
           } catch(e) {
             console.warn('pageFlip update on mode switch:', e);
@@ -1381,10 +1400,7 @@
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
         if (pageFlipInstance && state.viewMode === 'flip') {
-          try {
-            const dims = calculateFlipbookDimensions();
-            pageFlipInstance.update();
-          } catch(e) {}
+          layoutFlipbook();
         }
       }, 180);
     });
