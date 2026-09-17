@@ -61,6 +61,8 @@
   let audioCtx = null;
   let scrollObserver = null;
   let thumbObserver = null;
+  // Captured at startup before init's own page sync can overwrite it
+  let resumePage = null;
 
   // --- DOM Elements ---
   const DOM = {
@@ -84,8 +86,6 @@
     pageSlider: document.getElementById('page-slider'),
     sliderTooltip: document.getElementById('slider-tooltip'),
     toast: document.getElementById('toast'),
-    resumeBanner: document.getElementById('resume-banner'),
-    resumePageNum: document.getElementById('resume-page-num'),
     bookEdgeLeft: document.getElementById('book-edge-left'),
     bookEdgeRight: document.getElementById('book-edge-right'),
     // Drawers
@@ -122,9 +122,7 @@
     btnThumbnails: document.getElementById('btn-thumbnails'),
     btnSearch: document.getElementById('btn-search'),
     btnBookmark: document.getElementById('btn-bookmark'),
-    btnAddBookmark: document.getElementById('btn-add-bookmark'),
-    btnResumeYes: document.getElementById('btn-resume-yes'),
-    btnResumeDismiss: document.getElementById('btn-resume-dismiss')
+    btnAddBookmark: document.getElementById('btn-add-bookmark')
   };
 
   // --- Initial Setup ---
@@ -139,11 +137,11 @@
     initReader();
     bindEvents();
     applySpreadMode(false);
-    checkResumeReading();
 
     // Activate saved (or default reader) mode cleanly, without toast spam on load
     setViewMode(state.viewMode, true);
     onPageChanged(state.currentPage);
+    restoreLastPage();
   }
 
   // --- Persistence ---
@@ -181,6 +179,10 @@
     if (savedSerif !== null) state.readerSerif = savedSerif === 'true';
     const savedFocus = localStorage.getItem(STORAGE_KEY_FOCUS);
     if (savedFocus !== null) state.focusMode = savedFocus === 'true';
+    const savedPage = parseInt(localStorage.getItem(STORAGE_KEY_PAGE), 10);
+    if (!isNaN(savedPage) && savedPage >= 1) {
+      resumePage = Math.min(savedPage, TOTAL_PAGES);
+    }
 
     // Apply (these touch the DOM; setTheme saves, now with correct state)
     setTheme(savedTheme);
@@ -208,12 +210,15 @@
     }
   }
 
-  function checkResumeReading() {
-    const lastPage = parseInt(localStorage.getItem(STORAGE_KEY_PAGE), 10);
-    if (lastPage && lastPage > 2 && lastPage <= TOTAL_PAGES) {
-      DOM.resumePageNum.textContent = lastPage;
-      DOM.resumeBanner.style.display = 'flex';
+  // Returning visits land straight back where reading stopped.
+  // The value is captured in loadPreferences because init's own page sync
+  // (via onPageChanged -> saveLastPage) would otherwise overwrite it first.
+  // goToPage clamps, so stale values (e.g. from a shorter document) are safe.
+  function restoreLastPage() {
+    if (resumePage && resumePage > 1 && resumePage !== state.currentPage) {
+      goToPage(resumePage, false);
     }
+    resumePage = null;
   }
 
   // --- Backend Check & PDF.js Fallback ---
@@ -1610,16 +1615,6 @@
     });
 
     DOM.btnFullscreen.onclick = toggleFullscreen;
-
-    DOM.btnResumeYes.onclick = () => {
-      const p = parseInt(DOM.resumePageNum.textContent, 10);
-      DOM.resumeBanner.style.display = 'none';
-      goToPage(p);
-      showToast(`Resumed from Page ${p}`);
-    };
-    DOM.btnResumeDismiss.onclick = () => {
-      DOM.resumeBanner.style.display = 'none';
-    };
 
     DOM.searchInput.addEventListener('input', handleSearchInput);
     window.addEventListener('keydown', handleKeyboardShortcuts);

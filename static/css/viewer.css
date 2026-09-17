@@ -1029,49 +1029,6 @@ html, body {
   opacity: 1;
 }
 
-/* Resume Reading Banner */
-#resume-banner {
-  position: fixed;
-  bottom: 64px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--surface-glass);
-  backdrop-filter: blur(16px);
-  border: 1px solid var(--primary);
-  border-radius: var(--radius-md);
-  padding: 8px 16px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  z-index: 150;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-  animation: slideUp 0.3s ease-out;
-}
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translate(-50%, 20px); }
-  to { opacity: 1; transform: translate(-50%, 0); }
-}
-
-.resume-btn {
-  background: var(--primary);
-  color: #000;
-  border: none;
-  font-weight: 700;
-  font-size: 12px;
-  padding: 5px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.resume-dismiss {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 16px;
-}
-
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .book-title {
@@ -1315,6 +1272,30 @@ body.theme-light .reader-article {
 
 .reader-body .rl-dialogue {
   padding-left: 0.5em;
+  orphans: 3;
+  widows: 3;
+}
+
+/* Pagination refinements: even book-like measure, no single lines
+   stranded at screen edges, headings never left hanging at the bottom */
+.reader-body .rl-en {
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  orphans: 3;
+  widows: 3;
+}
+
+.reader-body .rl-jp {
+  orphans: 3;
+  widows: 3;
+}
+
+.reader-body .rl-heading,
+.reader-body .rl-chapter-div,
+.reader-body .reader-empty {
+  break-inside: avoid;
+  break-after: avoid;
 }
 
 .reader-body .rl-heading {
