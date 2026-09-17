@@ -1187,13 +1187,35 @@ html, body {
 .reader-scroll {
   flex: 1;
   width: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
-  /* block layout (not flex): a stretched flex item would lock the article
-     to viewport height and let content spill past the white background */
-  display: block;
-  padding: 14px 16px 30px;
+  overflow: hidden;
+  /* Flex + stretch locks the article to exactly the viewport height; the
+     body then flows text into horizontal screen-columns (Kindle-style),
+     so there is never any vertical scrolling in Reader mode. */
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  padding: 14px 16px 20px;
   scroll-behavior: smooth;
+}
+
+/* Fallback if multicol ever fails: re-enable plain scrolling so no text
+   is clipped out of reach */
+#reader-stage .reader-scroll.col-fallback {
+  display: block;
+  overflow-y: auto;
+}
+
+#reader-stage .reader-article {
+  display: flex;
+  flex-direction: column;
+}
+
+#reader-stage .reader-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  column-gap: 56px;
+  column-fill: auto;
 }
 
 .reader-article {
@@ -1250,22 +1272,17 @@ body.theme-light .reader-article {
   transition: width 0.2s ease;
 }
 
-.reader-doc-title {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 1.2px;
-  text-transform: uppercase;
-  color: #b45309;
-  margin-bottom: 6px;
+/* Chapter divider (in-flow marker shown when a chapter start page carries
+   no title in its own text — the book's own headings usually cover it) */
+.rl-chapter-div {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-.reader-chapter-title {
-  font-size: calc(var(--reader-fs, 19px) + 7px);
+  font-size: calc(var(--reader-fs, 19px) + 4px);
   font-weight: 800;
-  line-height: 1.25;
-  margin-bottom: 4px;
-  color: inherit;
+  text-align: center;
+  letter-spacing: 0.4px;
+  color: #b45309;
+  margin: 0.4em 0 1em;
+  line-height: 1.4;
 }
 
 .reader-chapter-sub {
@@ -1296,10 +1313,6 @@ body.theme-light .reader-article {
   margin: 0 0 0.25em;
 }
 
-.reader-body.hide-jp .rl-jp {
-  display: none;
-}
-
 .reader-body .rl-dialogue {
   padding-left: 0.5em;
 }
@@ -1327,16 +1340,6 @@ body.theme-light .reader-article {
   font-style: italic;
 }
 
-.reader-page-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 32px;
-  padding-top: 20px;
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
-}
-
 .reader-nav-btn {
   background: #1c1917;
   color: #fafaf9;
@@ -1353,13 +1356,6 @@ body.theme-light .reader-article {
 .reader-nav-btn:hover {
   background: #b45309;
   transform: translateY(-1px);
-}
-
-.reader-nav-hint {
-  font-size: 11px;
-  color: #a8a29e;
-  text-align: center;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 /* Flipbook sizing improvements: fill viewport, sharper images */
@@ -1385,4 +1381,85 @@ body.mode-reader #btn-zoom-reset,
 body.mode-reader #btn-sound,
 body.mode-reader #btn-autoflip {
   opacity: 0.35;
+}
+
+/* ==========================================================================
+   Focus mode — Reader sheds every fixed bar so the text owns the screen.
+   Hides top header + bottom toolbar, turns .reader-topbar into one slim
+   floating pill, drops the redundant in-article title, ghosts the side
+   chevrons. Flipbook/Scroll modes are untouched.
+   ========================================================================== */
+
+body.mode-reader.focus-mode #top-header,
+body.mode-reader.focus-mode #bottom-toolbar {
+  display: none;
+}
+
+body.mode-reader.focus-mode #main-container {
+  height: 100%;
+}
+
+/* Bottom thumbnail tray: with the toolbar gone its hidden resting position
+   would peek 50px into view, so dock it to the viewport bottom edge */
+body.mode-reader.focus-mode #thumbnails-drawer {
+  bottom: 0;
+}
+
+body.mode-reader.focus-mode .reader-topbar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: auto;
+  max-width: calc(100% - 24px);
+  margin: 0;
+  padding: 6px 10px;
+  gap: 10px;
+  border-radius: 20px;
+  z-index: 60;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+body.mode-reader.focus-mode .reader-topbar::-webkit-scrollbar {
+  display: none;
+}
+
+body.mode-reader.focus-mode .reader-chapter-label {
+  max-width: 220px;
+}
+
+body.mode-reader.focus-mode .reader-scroll {
+  padding-top: 66px;
+}
+
+body.mode-reader.focus-mode .reader-article {
+  padding: 26px 34px 50px;
+}
+
+body.mode-reader.focus-mode .side-nav-btn {
+  opacity: 0.22;
+  width: 40px;
+}
+
+body.mode-reader.focus-mode .side-nav-btn:hover {
+  opacity: 1;
+  width: 48px;
+}
+
+body.mode-reader.focus-mode .reader-nav-arrow {
+  flex-shrink: 0;
+}
+
+/* Tooltips under the floating pill open downward so they stay on-screen */
+body.mode-reader.focus-mode .reader-topbar [data-tooltip]:hover::before {
+  bottom: auto;
+  top: calc(100% + 8px);
+}
+
+@media (max-width: 640px) {
+  body.mode-reader.focus-mode .reader-chapter-label {
+    max-width: 110px;
+  }
 }

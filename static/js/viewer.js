@@ -20,6 +20,7 @@
   const STORAGE_KEY_RW = 'tensura_v22_reader_width';
   const STORAGE_KEY_RJP = 'tensura_v22_reader_jp';
   const STORAGE_KEY_RSERIF = 'tensura_v22_reader_serif';
+  const STORAGE_KEY_FOCUS = 'tensura_v22_focus';
 
   const TOC_DATA = [
     { title: "Prologue: Pure Malice (純粋な悪意)", page: 1 },
@@ -52,7 +53,8 @@
     readerFS: 19,
     readerWidth: 680,
     readerShowJP: true,
-    readerSerif: true
+    readerSerif: true,
+    focusMode: true // distraction-free Reader (hides header + bottom toolbar)
   };
 
   let pageFlipInstance = null;
@@ -73,7 +75,6 @@
     readerScroll: document.getElementById('reader-scroll'),
     readerArticle: document.getElementById('reader-article'),
     readerBody: document.getElementById('reader-body'),
-    readerChapterTitle: document.getElementById('reader-chapter-title'),
     readerChapterLabel: document.getElementById('reader-chapter-label'),
     readerPageNum: document.getElementById('reader-page-num'),
     readerProgressFill: document.getElementById('reader-progress-fill'),
@@ -178,6 +179,8 @@
     if (savedJP !== null) state.readerShowJP = savedJP === 'true';
     const savedSerif = localStorage.getItem(STORAGE_KEY_RSERIF);
     if (savedSerif !== null) state.readerSerif = savedSerif === 'true';
+    const savedFocus = localStorage.getItem(STORAGE_KEY_FOCUS);
+    if (savedFocus !== null) state.focusMode = savedFocus === 'true';
 
     // Apply (these touch the DOM; setTheme saves, now with correct state)
     setTheme(savedTheme);
@@ -196,6 +199,7 @@
     localStorage.setItem(STORAGE_KEY_RW, state.readerWidth);
     localStorage.setItem(STORAGE_KEY_RJP, state.readerShowJP);
     localStorage.setItem(STORAGE_KEY_RSERIF, state.readerSerif);
+    localStorage.setItem(STORAGE_KEY_FOCUS, state.focusMode);
   }
 
   function saveLastPage(page) {
@@ -580,24 +584,26 @@
   // typography instead of tiny fixed scan images.
   const JP_RE = /[\u3040-\u30ff\u4e00-\u9faf\uff00-\uffef]/;
   const HEADING_RE = /^(volume\s+\d+|prologue|chapter\s+\d*|epilogue|illustration|table of contents|character intro)/i;
+  const QUOTE_RE = /^[“"'\u300e\u300c『「]/;
+  const TERMINAL_RE = /[.。!！?？…;"”'’>»」』]$/;
+  const SHORT_EXCL_RE = /^.{1,45}[!！?？]$/;
 
   function initReader() {
     applyReaderPrefs(false);
-    renderReaderPage(state.currentPage);
+    renderReaderDoc();
+    goReaderPage(state.currentPage);
   }
 
   function applyReaderPrefs(notify = true) {
     if (!DOM.readerArticle) return;
     DOM.readerArticle.style.setProperty('--reader-fs', state.readerFS + 'px');
     DOM.readerArticle.style.setProperty('--reader-maxw', state.readerWidth + 'px');
-    DOM.readerBody.classList.toggle('hide-jp', !state.readerShowJP);
     DOM.readerArticle.classList.toggle('font-sans', !state.readerSerif);
 
     const jpBtn = document.getElementById('btn-jp-toggle');
     if (jpBtn) jpBtn.classList.toggle('active', state.readerShowJP);
     const serifBtn = document.getElementById('btn-serif-toggle');
     if (serifBtn) serifBtn.classList.toggle('active', state.readerSerif);
-    ['narrow', 'wide', 'full'].forEach(() => {});
     const wN = document.getElementById('btn-width-narrow');
     const wW = document.getElementById('btn-width-wide');
     const wF = document.getElementById('btn-width-full');
@@ -606,6 +612,25 @@
     if (wF) wF.classList.toggle('active', state.readerWidth === 860);
 
     if (notify !== false) savePreferences();
+    // Reflow only (font/width/family don't change paragraph structure)
+    requestReaderLayout();
+  }
+
+  // --- Focus Mode (distraction-free Reader) ---
+  function applyFocusMode(notify = true) {
+    const on = state.focusMode && state.viewMode === 'reader';
+    document.body.classList.toggle('focus-mode', on);
+    const tgl = document.getElementById('btn-focus-toggle');
+    if (tgl) {
+      tgl.classList.toggle('active', state.focusMode);
+      tgl.setAttribute('data-tooltip', state.focusMode
+        ? 'Distraction-free: ON (show all toolbars)'
+        : 'Distraction-free: OFF (hide toolbars)');
+    }
+    if (notify) {
+      savePreferences();
+      showToast(state.focusMode ? 'Focus mode: toolbars hidden' : 'Full toolbars shown');
+    }
   }
 
   function getReaderText(pageNum) {
@@ -615,60 +640,140 @@
     return null;
   }
 
-  function renderReaderPage(pageNum) {
-    if (!DOM.readerBody) return;
-    const raw = getReaderText(pageNum);
-
-    // Chapter label
-    let curChapter = TOC_DATA[0].title;
-    for (let c of TOC_DATA) {
-      if (pageNum >= c.page) curChapter = c.title;
+  function chapterForPage(pageNum) {
+    let cur = TOC_DATA[0].title;
+    for (const c of TOC_DATA) {
+      if (pageNum >= c.page) cur = c.title;
     }
-    if (DOM.readerChapterLabel) DOM.readerChapterLabel.textContent = curChapter;
-    if (DOM.readerChapterTitle) DOM.readerChapterTitle.textContent = curChapter.split('(')[0].trim();
-    if (DOM.readerPageNum) DOM.readerPageNum.textContent = pageNum;
-    if (DOM.readerProgressFill) {
-      DOM.readerProgressFill.style.width = `${Math.round((pageNum / TOTAL_PAGES) * 100)}%`;
-    }
+    return cur;
+  }
 
+  // Phase 1: one page of raw text -> paired blocks (blanks split paragraphs,
+  // JP/EN switches split runs, title-like openers become headings).
+  function buildPageBlocks(pageNum, raw) {
+    const blocks = []; // {kind:'jp'|'en'|'heading'|'chapter'|'empty', text, dialogue}
+    const shortTitle = chapterForPage(pageNum).split('(')[0].trim();
+    if (TOC_DATA.some(c => c.page === pageNum) && !(raw || '').slice(0, 800).includes(shortTitle)) {
+      blocks.push({ kind: 'chapter', text: shortTitle });
+    }
     if (!raw || !raw.trim()) {
-      // No extracted text (likely an illustration page) — guide user to PDF scan
-      DOM.readerBody.innerHTML = `
-        <div class="reader-empty">
-          This page appears to be an illustration with no extractable text.<br>
-          <button class="reader-nav-btn" id="btn-view-scan" style="margin-top:14px;">View original scan →</button>
-        </div>`;
-      const scanBtn = document.getElementById('btn-view-scan');
-      if (scanBtn) scanBtn.onclick = () => setViewMode('flip');
-      return;
+      blocks.push({ kind: 'empty' });
+      return blocks;
     }
-
-    const lines = raw.split('\n');
-    const html = [];
     let headingUsed = 0;
-
-    for (let rawLine of lines) {
+    let run = []; // [{ isJP, t }]
+    const flushRun = () => {
+      if (!run.length) return;
+      const isJP = run[0].isJP;
+      blocks.push({
+        kind: isJP ? 'jp' : 'en',
+        text: isJP ? run.map(l => l.t).join('') : run.map(l => l.t).join(' '),
+        dialogue: !isJP && QUOTE_RE.test(run[0].t)
+      });
+      run = [];
+    };
+    for (const rawLine of raw.split('\n')) {
       const line = rawLine.trim();
-      if (!line) {
-        html.push('<div class="rl-spacer"></div>');
-        continue;
-      }
+      if (!line) { flushRun(); continue; }
       const isJP = JP_RE.test(line);
-      const cls = isJP ? 'rl-jp' : 'rl-en';
-
-      // First 1-2 meaningful EN lines that look like titles become headings
       if (!isJP && headingUsed < 2 && line.length < 90 && HEADING_RE.test(line)) {
-        html.push(`<div class="rl-heading">${escapeHtml(line)}</div>`);
+        flushRun();
+        blocks.push({ kind: 'heading', text: line });
         headingUsed++;
         continue;
       }
-
-      const isDialogue = /^[“"'\u300e\u300c『「]/.test(line);
-      html.push(`<p class="${cls}${isDialogue && !isJP ? ' rl-dialogue' : ''}">${escapeHtml(line)}</p>`);
+      if (run.length && run[0].isJP !== isJP) flushRun();
+      run.push({ isJP, t: line });
     }
+    flushRun();
+    return blocks;
+  }
 
+  // Phase 2: assemble the global block stream across all PDF pages.
+  // Adaptive paragraphing: on parallel JP/EN pages viewed with JP hidden,
+  // English flows into natural multi-sentence paragraphs (pair-separator
+  // blanks are not real breaks); dialogue turns, headings, interjections
+  // and a soft length cap still break. Everything else keeps source breaks,
+  // except sentences severed by page boundaries, which are stitched.
+  function assembleReaderBlocks() {
+    const pages = (state.bookData && state.bookData.pages) || [];
+    const out = [];
+    let flow = '', flowPage = 0;
+    const flushFlow = () => {
+      if (flow) {
+        out.push({ kind: 'en', text: flow, dialogue: QUOTE_RE.test(flow), page: flowPage });
+        flow = '';
+      }
+    };
+    const flowingLine = (text, page) => {
+      if (flow && (QUOTE_RE.test(text) || SHORT_EXCL_RE.test(text) ||
+                   (flow.length > FLOW_MAX && TERMINAL_RE.test(flow)))) {
+        flushFlow();
+      }
+      if (!flow) {
+        if (SHORT_EXCL_RE.test(text)) {
+          out.push({ kind: 'en', text, dialogue: false, page });
+          return;
+        }
+        flow = text;
+        flowPage = page;
+      } else {
+        flow += ' ' + text;
+      }
+    };
+    const pushPaired = (b, page) => {
+      // Stitch sentences severed by page/line breaks: same-language run-on
+      // where the previous sentence didn't terminate and the next doesn't
+      // open dialogue. Complete sentences always stay split.
+      const last = out.length ? out[out.length - 1] : null;
+      const canStitch = last && (last.kind === 'en' || last.kind === 'jp') &&
+        last.kind === b.kind && !TERMINAL_RE.test(last.text) &&
+        !(b.kind === 'en' && QUOTE_RE.test(b.text));
+      if (canStitch) {
+        last.text += (b.kind === 'jp' ? '' : ' ') + b.text;
+      } else {
+        out.push(b);
+      }
+    };
+    for (let p = 1; p <= TOTAL_PAGES; p++) {
+      const raw = getReaderText(p);
+      const flowing = JP_RE.test(raw || '') && !state.readerShowJP;
+      for (const b of buildPageBlocks(p, raw)) {
+        b.page = p;
+        if (b.kind === 'heading' || b.kind === 'chapter' || b.kind === 'empty') {
+          flushFlow();
+          out.push(b);
+          continue;
+        }
+        if (flowing && b.kind === 'en') {
+          flowingLine(b.text, p);
+          continue;
+        }
+        if (flowing && b.kind === 'jp') continue; // dropped in flowing EN view
+        flushFlow();
+        pushPaired(b, p);
+      }
+    }
+    flushFlow();
+    return out;
+  }
+
+  function renderReaderDoc() {
+    if (!DOM.readerBody) return;
+    const html = assembleReaderBlocks().map(b => {
+      const pg = ` data-page="${b.page}"`;
+      if (b.kind === 'heading') return `<div class="rl-heading"${pg}>${escapeHtml(b.text)}</div>`;
+      if (b.kind === 'chapter') return `<div class="rl-chapter-div"${pg}>${escapeHtml(b.text)}</div>`;
+      if (b.kind === 'empty') {
+        return `<div class="reader-empty"${pg}>This page appears to be an illustration with no extractable text.<br>` +
+          `<button class="reader-nav-btn view-scan-btn" data-goto="${b.page}" style="margin-top:14px;">View original scan →</button></div>`;
+      }
+      const cls = b.kind === 'jp' ? 'rl-jp' : 'rl-en';
+      return `<p class="${cls}${b.kind === 'en' && b.dialogue ? ' rl-dialogue' : ''}"${pg}>${escapeHtml(b.text)}</p>`;
+    });
     DOM.readerBody.innerHTML = html.join('');
-    DOM.readerBody.classList.toggle('hide-jp', !state.readerShowJP);
+    if (DOM.readerScroll) DOM.readerScroll.scrollTop = 0;
+    layoutReader();
   }
 
   // --- Page Flip Navigation Logic ---
@@ -689,38 +794,137 @@
         targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     } else if (state.viewMode === 'reader') {
-      renderReaderPage(pageNum);
-      if (DOM.readerScroll) DOM.readerScroll.scrollTo({ top: 0, behavior: triggerFlip ? 'smooth' : 'auto' });
+      goReaderPage(pageNum); // direct jumps land on the page's first screen
     }
 
     onPageChanged(pageNum);
   }
 
+  // --- Global Screen Pagination (Kindle-style, no scrolling) ---
+  // The whole document is one flowing article; screens are measured globally
+  // and each PDF page maps to its first screen. readerStep moves one screen;
+  // page navigation jumps to mapped screens.
+  const COL_GAP = 56;
+  const FLOW_MAX = 700; // soft cap for a joined flowing paragraph
+  let rScreen = 0;        // global 0-based screen index
+  let rTotal = 1;         // global screen count
+  let rColW = 0;
+  let rPageStarts = [];   // 1-based: first screen of each PDF page (+sentinel)
+  let rLayoutQueued = false;
+
+  function requestReaderLayout() {
+    if (rLayoutQueued) return;
+    rLayoutQueued = true;
+    requestAnimationFrame(() => {
+      rLayoutQueued = false;
+      layoutReader();
+    });
+  }
+
+  function layoutReader() {
+    const body = DOM.readerBody;
+    if (!body) return;
+    rColW = Math.max(200, body.clientWidth);
+    body.style.columnWidth = `${rColW}px`;
+    const total = body.scrollWidth;
+    rTotal = Math.max(1, Math.round((total + COL_GAP) / (rColW + COL_GAP)));
+    // Map every PDF page to its first screen via block positions
+    rPageStarts = new Array(TOTAL_PAGES + 2).fill(0);
+    const seen = new Array(TOTAL_PAGES + 2).fill(false);
+    const nodes = body.querySelectorAll('[data-page]');
+    for (const el of nodes) {
+      const p = parseInt(el.getAttribute('data-page'), 10);
+      if (!(p >= 1 && p <= TOTAL_PAGES) || seen[p]) continue;
+      seen[p] = true;
+      rPageStarts[p] = Math.max(0, Math.round(el.offsetLeft / (rColW + COL_GAP)));
+    }
+    for (let p = 1; p <= TOTAL_PAGES; p++) {
+      if (!seen[p]) rPageStarts[p] = p > 1 ? rPageStarts[p - 1] : 0;
+    }
+    rPageStarts[TOTAL_PAGES + 1] = rTotal;
+    rScreen = Math.min(Math.max(0, rScreen), rTotal - 1);
+    // Safety: if columns failed and content still overflows vertically,
+    // fall back to plain scrolling rather than clipping text away.
+    const failed = body.scrollHeight > body.clientHeight + 4;
+    if (DOM.readerScroll) {
+      DOM.readerScroll.classList.toggle('col-fallback', failed);
+    }
+    if (!failed) {
+      paintScreen(false);
+    } else {
+      refreshScreenChrome();
+    }
+  }
+
+  function paintScreen(smooth) {
+    const body = DOM.readerBody;
+    if (!body) return;
+    const x = Math.min(rScreen * (rColW + COL_GAP), Math.max(0, body.scrollWidth - body.clientWidth));
+    try {
+      if (smooth && body.scrollTo) body.scrollTo({ left: x, behavior: 'smooth' });
+      else body.scrollLeft = x;
+    } catch (e) {
+      body.scrollLeft = x;
+    }
+    refreshScreenChrome();
+  }
+
+  function screenToPage(s) {
+    if (!rPageStarts.length) return 1;
+    let lo = 1, hi = TOTAL_PAGES, ans = 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (rPageStarts[mid] <= s) { ans = mid; lo = mid + 1; }
+      else hi = mid - 1;
+    }
+    return ans;
+  }
+
+  function refreshScreenChrome() {
+    const pg = state.currentPage;
+    if (DOM.readerChapterLabel) DOM.readerChapterLabel.textContent = chapterForPage(pg);
+    if (DOM.readerPageNum) DOM.readerPageNum.textContent = pg;
+    const s = document.getElementById('reader-screen-num');
+    if (s) {
+      const start = rPageStarts.length ? rPageStarts[pg] : 0;
+      const end = rPageStarts.length ? rPageStarts[Math.min(pg + 1, TOTAL_PAGES + 1)] : rTotal;
+      const n = Math.max(1, end - start);
+      s.textContent = (n > 1) ? ` · ${rScreen - start + 1}/${n}` : '';
+    }
+    if (DOM.readerProgressFill && rTotal > 1) {
+      DOM.readerProgressFill.style.width = `${(rScreen / (rTotal - 1) * 100).toFixed(2)}%`;
+    }
+  }
+
+  function goReaderPage(pageNum, smooth = false) {
+    pageNum = Math.max(1, Math.min(TOTAL_PAGES, pageNum));
+    rScreen = (rPageStarts.length > pageNum) ? rPageStarts[pageNum] : 0;
+    paintScreen(smooth);
+  }
+
   function readerStep(delta) {
-    goToPage(state.currentPage + delta, false);
-    if (DOM.readerScroll) DOM.readerScroll.scrollTo({ top: 0, behavior: 'auto' });
+    if (!rTotal) return;
+    const t = Math.min(rTotal - 1, Math.max(0, rScreen + delta));
+    if (t === rScreen) return;
+    rScreen = t;
+    paintScreen(true);
+    const pg = screenToPage(rScreen);
+    if (pg !== state.currentPage) {
+      state.currentPage = pg;
+      saveLastPage(pg);
+      updateVirtualWindow(pg);
+      updateBookEdgeStack(pg);
+    }
+    updateUI();
   }
 
   function onPageChanged(pageNum) {
     state.currentPage = pageNum;
     updateVirtualWindow(pageNum);
     if (state.viewMode === 'reader') {
-      // Re-render in case the event came from slider / TOC / search / keyboard
-      const bodyFirst = DOM.readerBody ? DOM.readerBody.getAttribute('data-pg') : null;
-      if (String(bodyFirst) !== String(pageNum)) {
-        renderReaderPage(pageNum);
-      }
-      if (DOM.readerBody) DOM.readerBody.setAttribute('data-pg', pageNum);
-      if (DOM.readerPageNum) DOM.readerPageNum.textContent = pageNum;
-      if (DOM.readerProgressFill) {
-        DOM.readerProgressFill.style.width = `${Math.round((pageNum / TOTAL_PAGES) * 100)}%`;
-      }
-      let curChapter = TOC_DATA[0].title;
-      for (let c of TOC_DATA) {
-        if (pageNum >= c.page) curChapter = c.title;
-      }
-      if (DOM.readerChapterLabel) DOM.readerChapterLabel.textContent = curChapter;
-      if (DOM.readerChapterTitle) DOM.readerChapterTitle.textContent = curChapter.split('(')[0].trim();
+      // Continuous-flow model: rendering + position owned by the reader
+      // engine (goReaderPage/readerStep already painted). Just sync chrome.
+      refreshScreenChrome();
     }
     updateUI();
     saveLastPage(pageNum);
@@ -1176,6 +1380,7 @@
     DOM.btnModeScroll.classList.toggle('active', mode === 'scroll');
 
     document.body.classList.toggle('mode-reader', mode === 'reader');
+    applyFocusMode(false);
 
     const show = (el, on) => {
       if (!el) return;
@@ -1217,8 +1422,7 @@
       if (!silent) showToast('Scroll: original PDF scans (use Reader for large text)');
     } else {
       requestAnimationFrame(() => {
-        renderReaderPage(state.currentPage);
-        if (DOM.readerScroll) DOM.readerScroll.scrollTo({ top: 0, behavior: 'auto' });
+        layoutReader();
         updateUI();
       });
       if (!silent) showToast('Reader Mode: large reflowable text');
@@ -1247,11 +1451,6 @@
     DOM.btnFirstPage.onclick = () => goToPage(1);
     DOM.btnLastPage.onclick = () => goToPage(TOTAL_PAGES);
 
-    const rPrev = document.getElementById('btn-reader-prev');
-    const rNext = document.getElementById('btn-reader-next');
-    if (rPrev) rPrev.onclick = () => readerStep(-1);
-    if (rNext) rNext.onclick = () => readerStep(1);
-
     // Reader typography controls
     const fInc = document.getElementById('btn-font-inc');
     const fDec = document.getElementById('btn-font-dec');
@@ -1273,7 +1472,10 @@
     if (jpBtn) jpBtn.onclick = () => {
       state.readerShowJP = !state.readerShowJP;
       applyReaderPrefs();
-      showToast(state.readerShowJP ? 'Japanese lines: shown' : 'Japanese lines: hidden');
+      // Paragraph structure depends on this toggle -> rebuild the document
+      renderReaderDoc();
+      goReaderPage(state.currentPage);
+      showToast(state.readerShowJP ? 'Japanese lines: shown (paired view)' : 'Japanese lines: hidden (flowing English)');
     };
     const serifBtn = document.getElementById('btn-serif-toggle');
     if (serifBtn) serifBtn.onclick = () => {
@@ -1281,6 +1483,33 @@
       applyReaderPrefs();
       showToast(state.readerSerif ? 'Serif font' : 'Sans-serif font');
     };
+
+    // Focus-mode pill: paging, library tools, focus toggle
+    const fPrev = document.getElementById('btn-focus-prev');
+    const fNext = document.getElementById('btn-focus-next');
+    if (fPrev) fPrev.onclick = () => readerStep(-1);
+    if (fNext) fNext.onclick = () => readerStep(1);
+    const fToc = document.getElementById('btn-focus-toc');
+    const fSearch = document.getElementById('btn-focus-search');
+    const fBm = document.getElementById('btn-focus-bm');
+    if (fToc) fToc.onclick = () => toggleDrawer(DOM.tocDrawer);
+    if (fSearch) fSearch.onclick = () => toggleDrawer(DOM.searchDrawer);
+    if (fBm) fBm.onclick = () => toggleDrawer(DOM.bookmarkDrawer);
+    const fTgl = document.getElementById('btn-focus-toggle');
+    if (fTgl) fTgl.onclick = () => {
+      state.focusMode = !state.focusMode;
+      applyFocusMode();
+    };
+
+    // Illustration placeholders carry their PDF page; one delegated handler
+    // covers all of them (they are re-created on every document rebuild).
+    if (DOM.readerBody) DOM.readerBody.addEventListener('click', (e) => {
+      const btn = e.target.closest ? e.target.closest('.view-scan-btn') : null;
+      if (!btn) return;
+      setViewMode('flip');
+      const p = parseInt(btn.getAttribute('data-goto'), 10);
+      if (!isNaN(p)) goToPage(p, false);
+    });
 
     DOM.btnSpreadToggle.onclick = toggleSpreadMode;
 
@@ -1401,9 +1630,32 @@
       resizeTimer = setTimeout(() => {
         if (pageFlipInstance && state.viewMode === 'flip') {
           layoutFlipbook();
+        } else if (state.viewMode === 'reader') {
+          requestReaderLayout();
         }
       }, 180);
     });
+
+    // Mouse wheel turns screens in Reader (vertical scroll is disabled there)
+    let wheelAcc = 0;
+    let wheelCoolUntil = 0;
+    if (DOM.readerScroll) {
+      DOM.readerScroll.addEventListener('wheel', (e) => {
+        if (e.ctrlKey || state.viewMode !== 'reader') return;
+        if (document.querySelector('.drawer-panel.open, #thumbnails-drawer.open')) return;
+        const now = Date.now();
+        wheelAcc += (Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX);
+        if (now < wheelCoolUntil) {
+          wheelAcc = 0;
+          return;
+        }
+        if (Math.abs(wheelAcc) >= 120) {
+          readerStep(wheelAcc > 0 ? 1 : -1);
+          wheelAcc = 0;
+          wheelCoolUntil = now + 700;
+        }
+      }, { passive: true });
+    }
   }
 
   function handleKeyboardShortcuts(e) {

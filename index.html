@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Tensura Vol. 22 - AnyFlip Local Viewer</title>
-  <link rel="stylesheet" href="static/css/viewer.css?v=3">
+  <link rel="stylesheet" href="static/css/viewer.css?v=8">
 </head>
 <body class="theme-default">
 
@@ -74,10 +74,16 @@
     <!-- 3. Reflowable Text Reader Mode Stage (fixes tiny-PDF-text problem) -->
     <div id="reader-stage" class="view-stage stage-active">
       <div class="reader-topbar">
+        <button id="btn-focus-prev" class="reader-btn reader-nav-arrow" data-tooltip="Previous page (←)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
         <div class="reader-chapter-info">
           <span class="reader-chapter-label" id="reader-chapter-label">Prologue: Pure Malice</span>
-          <span class="reader-page-label">Page <span id="reader-page-num">1</span> / 586</span>
+          <span class="reader-page-label">Page <span id="reader-page-num">1</span> / 586<span id="reader-screen-num"></span></span>
         </div>
+        <button id="btn-focus-next" class="reader-btn reader-nav-arrow" data-tooltip="Next page (→)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
         <div class="reader-controls">
           <div class="reader-ctrl-group" title="Japanese original lines">
             <button id="btn-jp-toggle" class="reader-btn active" data-tooltip="Show/Hide Japanese (J)">JP</button>
@@ -94,20 +100,29 @@
           <div class="reader-ctrl-group" title="Font family">
             <button id="btn-serif-toggle" class="reader-btn active" data-tooltip="Serif / Sans-serif">Ag</button>
           </div>
+          <div class="reader-ctrl-group" title="Library tools">
+            <button id="btn-focus-toc" class="reader-btn" data-tooltip="Contents (T)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+            </button>
+            <button id="btn-focus-search" class="reader-btn" data-tooltip="Search (S)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </button>
+            <button id="btn-focus-bm" class="reader-btn" data-tooltip="Bookmarks (B)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+            </button>
+          </div>
+          <div class="reader-ctrl-group" title="Distraction-free mode">
+            <button id="btn-focus-toggle" class="reader-btn active" data-tooltip="Distraction-free: ON (show all toolbars)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+            </button>
+          </div>
         </div>
       </div>
       <div class="reader-scroll" id="reader-scroll">
         <article class="reader-article" id="reader-article">
           <div class="reader-progress-top"><div class="reader-progress-fill" id="reader-progress-fill"></div></div>
-          <h1 class="reader-doc-title">Volume 22: Godly Destruction and Chaos</h1>
-          <h2 class="reader-chapter-title" id="reader-chapter-title">Prologue</h2>
           <div class="reader-body" id="reader-body">
-            <!-- Reflowable paragraphs injected via JS -->
-          </div>
-          <div class="reader-page-nav">
-            <button id="btn-reader-prev" class="reader-nav-btn">← Previous page</button>
-            <span class="reader-nav-hint">Tip: use ← → keys or click the side arrows. Text is selectable.</span>
-            <button id="btn-reader-next" class="reader-nav-btn">Next page →</button>
+            <!-- Continuous flowing article injected via JS -->
           </div>
         </article>
       </div>
@@ -317,7 +332,7 @@
 <!-- Scripts -->
 <script src="static/js/page-flip.browser.js"></script>
 <script src="static/js/pdf.min.js"></script>
-<script src="static/js/viewer.js?v=3"></script>
+<script src="static/js/viewer.js?v=8"></script>
 
 </body>
 </html>
