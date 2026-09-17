@@ -1,0 +1,19 @@
+# User-supplied novel files (copyrighted, not committed)
+*.pdf
+Volume_22_MTL.pdf
+static/book_data.json
+*book_data.json
+
+# Rendered page image cache (regenerated at runtime)
+.page_cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db

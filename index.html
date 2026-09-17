@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Tensura Vol. 22 - AnyFlip Local Viewer</title>
+  <link rel="stylesheet" href="static/css/viewer.css">
+</head>
+<body class="theme-default">
+
+<div id="app-viewport">
+
+  <!-- Top Header Bar -->
+  <header id="top-header">
+    <div class="header-left">
+      <div class="logo-badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+        <span>ANYFLIP</span>
+      </div>
+      <div class="book-title-container">
+        <span class="book-title">Tensura Volume 22: Godly Destruction and Chaos</span>
+        <span class="chapter-subtitle" id="current-chapter-display">Prologue: Pure Malice (純粋な悪意)</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <!-- Mode Switcher -->
+      <div class="mode-switch-group">
+        <button id="btn-mode-reader" class="mode-btn active" title="Reflowable Text Reader Mode (Recommended for novels — large, resizable text)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+          <span>Reader</span>
+        </button>
+        <button id="btn-mode-flip" class="mode-btn" title="3D Realistic Flipbook Mode (Original PDF scans)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="3" x2="12" y2="21"></line></svg>
+          <span>Flipbook</span>
+        </button>
+        <button id="btn-mode-scroll" class="mode-btn" title="Continuous Vertical Scroll Mode (Original PDF scans)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+          <span>Scroll</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Viewport -->
+  <main id="main-container">
+
+    <!-- Floating Side Chevrons -->
+    <button id="btn-side-prev" class="side-nav-btn side-nav-left" title="Previous Page (Left Arrow)">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+    </button>
+    <button id="btn-side-next" class="side-nav-btn side-nav-right" title="Next Page (Right Arrow / Spacebar)">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+    </button>
+
+    <!-- 1. Flipbook Mode Stage -->
+    <div id="flipbook-stage" class="view-stage stage-inactive">
+      <div id="flipbook-wrapper">
+        <div class="book-edge-shadow book-edge-left" id="book-edge-left"></div>
+        <div id="flipbook" class="flipbook-container">
+          <!-- Pages will be populated dynamically -->
+        </div>
+        <div class="book-edge-shadow book-edge-right" id="book-edge-right"></div>
+      </div>
+    </div>
+
+    <!-- 2. Continuous Vertical Scroll Mode Stage -->
+    <div id="scroll-stage" class="view-stage stage-inactive">
+      <div class="scroll-pages-list" id="scroll-pages-list">
+        <!-- Virtual scroll page elements -->
+      </div>
+    </div>
+
+    <!-- 3. Reflowable Text Reader Mode Stage (fixes tiny-PDF-text problem) -->
+    <div id="reader-stage" class="view-stage stage-active">
+      <div class="reader-topbar">
+        <div class="reader-chapter-info">
+          <span class="reader-chapter-label" id="reader-chapter-label">Prologue: Pure Malice</span>
+          <span class="reader-page-label">Page <span id="reader-page-num">1</span> / 586</span>
+        </div>
+        <div class="reader-controls">
+          <div class="reader-ctrl-group" title="Japanese original lines">
+            <button id="btn-jp-toggle" class="reader-btn active" data-tooltip="Show/Hide Japanese (J)">JP</button>
+          </div>
+          <div class="reader-ctrl-group" title="Font size">
+            <button id="btn-font-dec" class="reader-btn" data-tooltip="Smaller text">A−</button>
+            <button id="btn-font-inc" class="reader-btn" data-tooltip="Larger text">A+</button>
+          </div>
+          <div class="reader-ctrl-group reader-width-group" title="Column width">
+            <button id="btn-width-narrow" class="reader-btn" data-tooltip="Narrow column">|·|</button>
+            <button id="btn-width-wide" class="reader-btn active" data-tooltip="Comfortable column">|··|</button>
+            <button id="btn-width-full" class="reader-btn" data-tooltip="Wide column">|···|</button>
+          </div>
+          <div class="reader-ctrl-group" title="Font family">
+            <button id="btn-serif-toggle" class="reader-btn active" data-tooltip="Serif / Sans-serif">Ag</button>
+          </div>
+        </div>
+      </div>
+      <div class="reader-scroll" id="reader-scroll">
+        <article class="reader-article" id="reader-article">
+          <div class="reader-progress-top"><div class="reader-progress-fill" id="reader-progress-fill"></div></div>
+          <h1 class="reader-doc-title">Volume 22: Godly Destruction and Chaos</h1>
+          <h2 class="reader-chapter-title" id="reader-chapter-title">Prologue</h2>
+          <div class="reader-body" id="reader-body">
+            <!-- Reflowable paragraphs injected via JS -->
+          </div>
+          <div class="reader-page-nav">
+            <button id="btn-reader-prev" class="reader-nav-btn">← Previous page</button>
+            <span class="reader-nav-hint">Tip: use ← → keys or click the side arrows. Text is selectable.</span>
+            <button id="btn-reader-next" class="reader-nav-btn">Next page →</button>
+          </div>
+        </article>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Bottom Toolbar (AnyFlip Style) -->
+  <footer id="bottom-toolbar">
+    <!-- Left Tools -->
+    <div class="toolbar-section">
+      <button id="btn-toc" class="tool-btn" data-tooltip="Table of Contents (T)">
+        <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+      </button>
+      <button id="btn-thumbnails" class="tool-btn" data-tooltip="Thumbnails Drawer">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+      </button>
+      <button id="btn-search" class="tool-btn" data-tooltip="Search Book (S)">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      </button>
+      <button id="btn-bookmark" class="tool-btn" data-tooltip="Bookmarks (B)">
+        <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+      </button>
+    </div>
+
+    <!-- Center Navigation -->
+    <div class="toolbar-section center-nav">
+      <button id="btn-first-page" class="tool-btn" data-tooltip="First Page (Home)">
+        <svg viewBox="0 0 24 24"><polygon points="11 19 2 12 11 5 11 19"></polygon><polygon points="22 19 13 12 22 5 22 19"></polygon></svg>
+      </button>
+      <button id="btn-prev-page" class="tool-btn" data-tooltip="Previous (←)">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </button>
+
+      <div class="page-nav-box">
+        <input type="text" id="page-input" class="page-input" value="1" maxlength="4" aria-label="Page number">
+        <span class="page-total">/ <span id="total-pages-label">586</span></span>
+      </div>
+
+      <button id="btn-next-page" class="tool-btn" data-tooltip="Next (→)">
+        <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      </button>
+      <button id="btn-last-page" class="tool-btn" data-tooltip="Last Page (End)">
+        <svg viewBox="0 0 24 24"><polygon points="13 19 22 12 13 5 13 19"></polygon><polygon points="2 19 11 12 2 5 2 19"></polygon></svg>
+      </button>
+
+      <!-- Scrubber Slider -->
+      <div class="slider-container">
+        <input type="range" id="page-slider" class="page-slider" min="1" max="586" value="1">
+        <div id="slider-tooltip" class="slider-tooltip">Page 1</div>
+      </div>
+    </div>
+
+    <!-- Right Controls -->
+    <div class="toolbar-section">
+      <!-- Spread Mode (Single vs Double page) -->
+      <button id="btn-spread-toggle" class="tool-btn" data-tooltip="Toggle 2-Page / 1-Page Spread">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="3" x2="12" y2="21"></line></svg>
+      </button>
+
+      <!-- Zoom Controls -->
+      <button id="btn-zoom-out" class="tool-btn" data-tooltip="Zoom Out (-)">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+      </button>
+      <button id="btn-zoom-reset" class="tool-btn" data-tooltip="Reset Zoom (100%)">
+        <svg viewBox="0 0 24 24"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
+      </button>
+      <button id="btn-zoom-in" class="tool-btn" data-tooltip="Zoom In (+)">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+      </button>
+
+      <!-- Auto-Flip Slideshow -->
+      <button id="btn-autoflip" class="tool-btn" data-tooltip="Auto-Play / Slideshow">
+        <svg viewBox="0 0 24 24" id="icon-play"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+      </button>
+
+      <!-- Flip Sound Toggle -->
+      <button id="btn-sound" class="tool-btn active" data-tooltip="Page Turn Sound: ON">
+        <svg viewBox="0 0 24 24" id="icon-sound"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+      </button>
+
+      <!-- Themes -->
+      <button id="btn-theme" class="tool-btn" data-tooltip="Change Reading Theme">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+      </button>
+
+      <!-- Fullscreen -->
+      <button id="btn-fullscreen" class="tool-btn" data-tooltip="Fullscreen (F)">
+        <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+      </button>
+    </div>
+  </footer>
+
+  <!-- Drawer 1: Table of Contents -->
+  <div id="toc-drawer" class="drawer-panel">
+    <div class="drawer-header">
+      <div class="drawer-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+        <span>Table of Contents</span>
+      </div>
+      <button class="drawer-close-btn" data-close="toc-drawer">✕</button>
+    </div>
+    <div class="drawer-body">
+      <ul class="toc-list" id="toc-list">
+        <!-- Injected via JavaScript -->
+      </ul>
+    </div>
+  </div>
+
+  <!-- Drawer 2: Full-Text Search -->
+  <div id="search-drawer" class="drawer-panel">
+    <div class="drawer-header">
+      <div class="drawer-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search in Novel</span>
+      </div>
+      <button class="drawer-close-btn" data-close="search-drawer">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="search-input-box">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" id="search-input" placeholder="Search characters, skills, spells..." autofocus>
+        <span id="search-count" style="font-size:11px; color:var(--text-dim);"></span>
+      </div>
+      <div class="search-results-list" id="search-results-list">
+        <div style="text-align:center; padding:30px 10px; color:var(--text-muted); font-size:13px;">
+          Type a word or character name to search across all 586 pages.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Drawer 3: Bookmarks -->
+  <div id="bookmark-drawer" class="drawer-panel">
+    <div class="drawer-header">
+      <div class="drawer-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+        <span>Bookmarks</span>
+      </div>
+      <button class="drawer-close-btn" data-close="bookmark-drawer">✕</button>
+    </div>
+    <div class="drawer-body">
+      <button id="btn-add-bookmark" class="bookmark-add-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        <span>Bookmark Current Page</span>
+      </button>
+      <div class="bookmark-list" id="bookmark-list">
+        <!-- Injected via JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Drawer 4: Theme Picker -->
+  <div id="theme-drawer" class="drawer-panel">
+    <div class="drawer-header">
+      <div class="drawer-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle></svg>
+        <span>Reading Theme</span>
+      </div>
+      <button class="drawer-close-btn" data-close="theme-drawer">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="theme-options">
+        <div class="theme-card active" data-theme="default">
+          <div class="theme-preview-circle" style="background: radial-gradient(circle, #1e1e2c, #0d0d14);"></div>
+          <span>AnyFlip Dark</span>
+        </div>
+        <div class="theme-card" data-theme="wood">
+          <div class="theme-preview-circle" style="background: radial-gradient(circle, #382414, #180f08);"></div>
+          <span>Cozy Desk</span>
+        </div>
+        <div class="theme-card" data-theme="oled">
+          <div class="theme-preview-circle" style="background: #000000;"></div>
+          <span>Midnight OLED</span>
+        </div>
+        <div class="theme-card" data-theme="light">
+          <div class="theme-preview-circle" style="background: radial-gradient(circle, #f3f4f6, #d1d5db);"></div>
+          <span>Clean Paper</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Drawer 5: Thumbnails Bottom Tray -->
+  <div id="thumbnails-drawer">
+    <div class="drawer-header" style="padding:8px 16px;">
+      <div class="drawer-title" style="font-size:13px;">Page Previews (586 Pages)</div>
+      <button class="drawer-close-btn" data-close="thumbnails-drawer">✕</button>
+    </div>
+    <div class="thumb-scroll-track" id="thumb-scroll-track">
+      <!-- Thumbnail cards generated dynamically -->
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast">Notice message</div>
+
+  <!-- Resume Reading Prompt -->
+  <div id="resume-banner" style="display:none;">
+    <span>Resume reading from <strong>Page <span id="resume-page-num">1</span></strong>?</span>
+    <button class="resume-btn" id="btn-resume-yes">Resume</button>
+    <button class="resume-dismiss" id="btn-resume-dismiss">✕</button>
+  </div>
+
+</div>
+
+<!-- Scripts -->
+<script src="static/js/page-flip.browser.js"></script>
+<script src="static/js/pdf.min.js"></script>
+<script src="static/js/viewer.js"></script>
+
+</body>
+</html>
