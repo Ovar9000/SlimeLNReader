@@ -320,6 +320,23 @@
   <!-- Toast Notification -->
   <div id="toast">Notice message</div>
 
+  <!-- Ask the Book: floating companion button + chat panel -->
+  <button id="askbook-fab" title="Ask the Book (answers from pages you've read — no spoilers)">?</button>
+  <div id="askbook-panel" style="display:none;">
+    <div class="drawer-header" style="padding:10px 14px;">
+      <div class="drawer-title" style="font-size:13px;">
+        <span>Ask the Book</span>
+        <span id="askbook-position" style="font-weight:400; color:var(--text-muted); font-size:11px;"></span>
+      </div>
+      <button class="drawer-close-btn" id="askbook-close">✕</button>
+    </div>
+    <div id="askbook-messages"></div>
+    <div id="askbook-input-row">
+      <input type="text" id="askbook-input" placeholder="Ask about this page…" maxlength="500" aria-label="Ask the book">
+      <button id="askbook-send" title="Send">➤</button>
+    </div>
+  </div>
+
 </div>
 
 <!-- Scripts -->

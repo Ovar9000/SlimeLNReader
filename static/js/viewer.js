@@ -1751,6 +1751,107 @@
     }
   }
 
+  // --- Ask the Book companion (scoped chat, spoiler-safe server side) ---
+  const askHistory = []; // alternating user/companion texts, capped at 6
+
+  function askbookPositionLabel() {
+    const el = document.getElementById('askbook-position');
+    if (!el) return;
+    let chap = TOC_DATA[0].title;
+    for (const c of TOC_DATA) {
+      if (state.currentPage >= c.page) chap = c.title;
+    }
+    el.textContent = `· p.${state.currentPage} · ${chap.split('(')[0].trim()}`;
+  }
+
+  function askbookAddMsg(text, cls) {
+    const box = document.getElementById('askbook-messages');
+    if (!box) return null;
+    const div = document.createElement('div');
+    div.className = `askbook-msg ${cls}`;
+    div.textContent = text;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+    return div;
+  }
+
+  async function askbookSend() {
+    const input = document.getElementById('askbook-input');
+    const sendBtn = document.getElementById('askbook-send');
+    if (!input) return;
+    const question = input.value.trim();
+    if (!question || (sendBtn && sendBtn.disabled)) return;
+    input.value = '';
+    askbookAddMsg(question, 'user');
+    askHistory.push(question);
+    while (askHistory.length > 6) askHistory.shift();
+    const thinking = askbookAddMsg('Thinking…', 'companion thinking');
+    if (sendBtn) sendBtn.disabled = true;
+    try {
+      const res = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          page: state.currentPage,
+          question,
+          history: askHistory.slice(0, -1),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (thinking) thinking.remove();
+      if (!res.ok) {
+        askbookAddMsg(data.error || `Request failed (${res.status}).`, 'companion error');
+      } else {
+        const answer = (data.answer || '').trim() || '(No answer returned.)';
+        askbookAddMsg(answer, 'companion');
+        askHistory.push(answer);
+        while (askHistory.length > 6) askHistory.shift();
+      }
+    } catch (e) {
+      if (thinking) thinking.remove();
+      askbookAddMsg('Could not reach the companion. Is the server running?', 'companion error');
+    } finally {
+      if (sendBtn) sendBtn.disabled = false;
+      const box = document.getElementById('askbook-messages');
+      if (box) box.scrollTop = box.scrollHeight;
+    }
+  }
+
+  function askbookToggle(show) {
+    const panel = document.getElementById('askbook-panel');
+    if (!panel) return;
+    const visible = show !== undefined ? show : panel.style.display === 'none';
+    panel.style.display = visible ? 'flex' : 'none';
+    if (visible) {
+      askbookPositionLabel();
+      const input = document.getElementById('askbook-input');
+      if (input) input.focus();
+      const box = document.getElementById('askbook-messages');
+      if (box && !box.hasChildNodes()) {
+        askbookAddMsg('Ask me about the page you are on — summaries, recaps, stats, theories. I never spoil ahead.', 'companion');
+      }
+    }
+  }
+
+  (function initAskBook() {
+    const fab = document.getElementById('askbook-fab');
+    const closeBtn = document.getElementById('askbook-close');
+    const sendBtn = document.getElementById('askbook-send');
+    const input = document.getElementById('askbook-input');
+    if (fab) fab.onclick = () => askbookToggle();
+    if (closeBtn) closeBtn.onclick = () => askbookToggle(false);
+    if (sendBtn) sendBtn.onclick = askbookSend;
+    if (input) {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          askbookSend();
+        }
+        e.stopPropagation();
+      });
+    }
+  })();
+
   function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/[&<>'"]/g, tag => ({

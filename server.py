@@ -194,6 +194,63 @@ class FlipbookHTTPRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_api_error(self, code, message):
+        body = json.dumps({"error": message}, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/ask":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+            except (TypeError, ValueError):
+                return self.send_api_error(400, "Missing Content-Length")
+            if length <= 0 or length > 32768:
+                return self.send_api_error(400, "Bad request size")
+            try:
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            except Exception:
+                return self.send_api_error(400, "Invalid JSON")
+            try:
+                page = int(payload.get("page", 0))
+            except (TypeError, ValueError):
+                return self.send_api_error(400, "Invalid page")
+            question = str(payload.get("question", ""))[:500].strip()
+            history = payload.get("history", [])
+            if not isinstance(history, list):
+                history = []
+            history = [str(t)[:500] for t in history][-6:]
+            if not question:
+                return self.send_api_error(400, "Empty question")
+            if page < 1 or page > TOTAL_PAGES:
+                return self.send_api_error(400, "Page out of range")
+            try:
+                page_text = doc[page - 1].get_text() or ""
+            except Exception as e:
+                return self.send_api_error(500, f"Could not read page text: {e}")
+            try:
+                from askbook import runtime
+                result = runtime.ask(question, page, page_text=page_text, history=history)
+            except ImportError as e:
+                return self.send_api_error(503, f"Reading companion not installed: {e}")
+            except ConnectionError as e:
+                return self.send_api_error(503, f"Reading companion store unreachable: {e}")
+            except RuntimeError as e:
+                return self.send_api_error(502, f"Reading companion error: {e}")
+            except Exception as e:
+                return self.send_api_error(500, f"Reading companion failed: {e}")
+            return self.send_json({
+                "answer": result.get("answer", ""),
+                "intent": result.get("intent", ""),
+                "entities": result.get("entities", []),
+            })
+        return self.send_error(404, "Not Found")
+
 def start_server(port=8080):
     server = ThreadingHTTPServer(("127.0.0.1", port), FlipbookHTTPRequestHandler)
     print(f"Flipbook server running at http://127.0.0.1:{port}/")

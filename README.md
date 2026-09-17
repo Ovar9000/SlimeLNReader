@@ -64,6 +64,34 @@ python run_viewer.py --app
 
 ---
 
+## Ask the Book (optional reading companion)
+
+A floating `?` button opens a chat scoped to your exact page: summaries, recaps,
+stat/location lookups, and theories — with a hard no-spoilers rule (nothing past
+your current page is ever retrieved or revealed). Runs fully local except the
+Gemini API calls. Requires Docker (Weaviate) + a Gemini key; the reader works
+fine without it.
+
+```bash
+pip install "weaviate-client>=4,<5>"
+# key via env GEMINI_API_KEY or untracked secrets.local.json (never commit it)
+docker run -d --name slime-weaviate --restart unless-stopped -p 8081:8080 -p 50051:50051 \
+  -e QUERY_DEFAULTS_LIMIT=20 -e AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true \
+  -e PERSISTENCE_DATA_PATH=/var/lib/weaviate -v slime-weaviate-data:/var/lib/weaviate \
+  semitechnologies/weaviate:1.39.5
+python -m askbook.ingest_novel            # novel chunks + character-state extraction
+python -m askbook.ingest_wiki --fetch-only # cache wiki pages (no API use)
+python -m askbook.ingest_wiki --ingest     # wiki chunks + extraction
+python -m askbook.test_acceptance          # deterministic checks (no API use)
+python -m askbook.test_acceptance --live   # end-to-end (needs data + quota)
+```
+
+`POST /api/ask` with `{page, question, history?}` returns `{answer, intent, entities}`.
+Ingestion is resumable (re-run safely) and `python -m askbook.dedupe --apply`
+cleans any duplicate rows.
+
+---
+
 ## Keyboard Shortcuts
 
 | Key | Action |

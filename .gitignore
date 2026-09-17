@@ -7,6 +7,9 @@ static/book_data.json
 # Rendered page image cache (regenerated at runtime)
 .page_cache/
 
+# Wiki fetch cache (re-fetchable via ingest_wiki --fetch-only)
+.wiki_cache/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -17,3 +20,8 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local secrets (API keys etc. — NEVER commit)
+secrets.local.json
+*.local.json
+.env
