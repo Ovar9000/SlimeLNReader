@@ -9,7 +9,8 @@ motivation. Do NOT infer or guess values that aren't stated or strongly implied 
 the text — it is fine, and expected, to extract nothing from a chunk with no such
 content.
 
-Output ONLY this JSON array (empty array if nothing qualifies):
+Output ONLY this JSON array (empty array if nothing qualifies). No explanations,
+no markdown fences, no commentary before or after — just the raw array:
 [
   {{
     "character": "string, canonical name as written in this chunk",

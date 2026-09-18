@@ -119,19 +119,63 @@ def generate(prompt, model=None, max_tokens=1024, temperature=0.2):
 def extract_json_array(text):
     """Pulls a JSON array out of model output (tolerant of fences/prose).
 
-    Repairs common model sloppiness (trailing commas) before giving up.
+    Finds the first '[' that opens an object and scans to its balanced close,
+    respecting quoted strings — so leading/trailing chatter can't corrupt it.
+    Repairs trailing commas as a last resort.
     """
     import re
-    start = text.find("[")
-    end = text.rfind("]")
-    if start == -1 or end <= start:
-        raise ValueError(f"No JSON array in output: {text[:200]}")
-    candidate = text[start : end + 1]
-    try:
-        return json.loads(candidate)
-    except json.JSONDecodeError:
-        repaired = re.sub(r",\s*([}\]])", r"\1", candidate)
-        return json.loads(repaired)
+
+    def balanced(start):
+        depth, in_str, esc = 0, False, False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == "[":
+                depth += 1
+            elif ch == "]":
+                depth -= 1
+                if depth == 0:
+                    return text[start : i + 1]
+        return None
+
+    idx = 0
+    while True:
+        start = text.find("[", idx)
+        if start == -1:
+            break
+        # skip bracket-runs that don't open an object (e.g. "[see above]")
+        lookahead = text[start : start + 40]
+        if re.match(r"\[\s*\{", lookahead):
+            candidate = balanced(start)
+            if candidate is not None:
+                try:
+                    return json.loads(candidate)
+                except json.JSONDecodeError:
+                    pass
+            # fall through: try repairing, then keep searching
+            if candidate is not None:
+                try:
+                    return json.loads(re.sub(r",\s*([}\]])", r"\1", candidate))
+                except json.JSONDecodeError:
+                    pass
+        idx = start + 1
+    # Last resort: model emitted bare objects without the array brackets.
+    stripped = text.strip()
+    if stripped.startswith("{"):
+        try:
+            return json.loads("[" + re.sub(r",\s*([}\]])", r"\1", stripped) + "]")
+        except json.JSONDecodeError:
+            pass
+    raise ValueError(f"No JSON array in output: {text[:200]}")
 
 
 def extract_json_object(text):
