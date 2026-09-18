@@ -50,6 +50,46 @@ def test_static_templates():
     check("help-no-spoiler-promise", "no spoiler" in META_APP_HELP.lower())
 
 
+def test_prompt_templates_render():
+    """Every prompt template must .format() cleanly (literal braces escaped)."""
+    from askbook import prompts
+    try:
+        a = prompts.PROMPT_A_SYSTEM.format(
+            reader_position_json="{}", user_question="q?")
+        b = prompts.PROMPT_B_SYSTEM.format(
+            volume=22, chapter="C", page=1, intent="page_summary",
+            user_question="q?", page_text="t", novel_context="n",
+            state_log_context="s", wiki_context="w", recent_chat="h")
+        c = prompts.PROMPT_C_SYSTEM.format(
+            volume=22, chapter="C", page_start=1, page_end=2,
+            chunk_text="some text")
+        import re
+        leftovers = [s for s in (a, b, c)
+                     if re.search(r"(?<!\{)\{(volume|chapter|page|intent)\}", s)]
+        check("prompts-render",
+              len(a) > 100 and len(b) > 100 and len(c) > 100 and not leftovers,
+              f"unsubstituted placeholders in {len(leftovers)} template(s)")
+    except Exception as e:
+        check("prompts-render", False, f"{type(e).__name__}: {str(e)[:120]}")
+
+
+def test_future_preroute():
+    """Explicit future asks route deterministically (no LLM, no wobble)."""
+    from askbook.runtime import route_question, FUTURE_RE
+    pos = {"volume": 22, "chapter": "C", "page": 300}
+    for q in ["Tell me what happens on the last page.",
+              "What happens next?",
+              "Spoil me please",
+              "What's in the next chapter?"]:
+        check(f"preroute-future:{q[:25]}",
+              route_question(q, pos)["intent"] == "future_request")
+    # Negatives checked against the regex only (no LLM calls in this suite).
+    for q in ["What happened in the epilogue of the last volume?",
+              "Summarize the page",
+              "Please don't spoil anything"]:
+        check(f"preroute-not-future:{q[:25]}", not FUTURE_RE.search(q))
+
+
 def test_quota_error_type():
     """Persistent 429s must surface as QuotaExceededError (mapped to a
     friendly chat message by the server), never as a raw API blob."""
@@ -157,6 +197,8 @@ def main():
     test_spoiler_filter()
     test_json_helpers()
     test_static_templates()
+    test_prompt_templates_render()
+    test_future_preroute()
     test_quota_error_type()
     test_store_ops()
     if args.live:

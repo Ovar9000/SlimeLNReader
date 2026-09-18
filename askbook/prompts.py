@@ -48,6 +48,11 @@ Also extract:
 - "queries": 1-3 search phrases, ONLY if intent needs vector search (recap_summary,
   character_profile, theory_discussion) — empty array otherwise
 
+Examples:
+Q: "What is Rimuru's current EP?" -> {{"intent": "stat_or_location_lookup", "entities": ["Rimuru"], "queries": []}}
+Q: "Where is Shion right now?" -> {{"intent": "stat_or_location_lookup", "entities": ["Shion"], "queries": []}}
+Q: "Summarize this page for me" -> {{"intent": "page_summary", "entities": [], "queries": []}}
+
 Output ONLY:
 {{
   "intent": "...",

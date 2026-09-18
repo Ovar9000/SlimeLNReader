@@ -48,7 +48,8 @@ def existing_state_pages(client):
     return seen
 
 
-def extract_states(chunk_text, page_start, page_end, chapter, tries=2):
+def _extract_attempt(chunk_text, page_start, page_end, chapter, tries=2):
+    """Returns list (possibly empty) on success, None on failure."""
     prompt = PROMPT_C_SYSTEM.format(
         volume=VOLUME, chapter=chapter,
         page_start=page_start, page_end=page_end, chunk_text=chunk_text[:6000],
@@ -56,14 +57,14 @@ def extract_states(chunk_text, page_start, page_end, chapter, tries=2):
     last_err = None
     for _ in range(tries):
         try:
-            raw = generate(prompt, max_tokens=2048, temperature=0.0)
+            raw = generate(prompt, max_tokens=4096, temperature=0.0)
             items = extract_json_array(raw)
             break
         except Exception as e:
             last_err = e
     else:
-        print(f"  [extract] failed p{page_start}-{page_end}: {last_err}", flush=True)
-        return []
+        print(f"  [extract] failed p{page_start}-{page_end}: {str(last_err)[:150]}", flush=True)
+        return None
     rows = []
     for it in items:
         try:
@@ -92,6 +93,23 @@ def extract_states(chunk_text, page_start, page_end, chapter, tries=2):
         except Exception:
             continue
     return rows
+
+
+def extract_states(chunk_text, page_start, page_end, chapter, tries=2):
+    rows = _extract_attempt(chunk_text, page_start, page_end, chapter, tries)
+    if rows is not None:
+        return rows
+    # Fallback: halve long chunks (same fail-closed page attribution).
+    lines = chunk_text.split("\n")
+    if len(lines) < 6:
+        return []
+    mid = len(lines) // 2
+    out = []
+    for half in ("\n".join(lines[:mid]), "\n".join(lines[mid:])):
+        part = _extract_attempt(half, page_start, page_end, chapter, tries)
+        if part:
+            out.extend(part)
+    return out
 
 
 def backfill_aliases(client):

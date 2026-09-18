@@ -38,22 +38,36 @@ def normalize_name(name):
     return re.sub(r"\s+", " ", n)
 
 
+FUTURE_RE = re.compile(
+    r"(what happens next|tell me what happens|what(?:'s| is) (?:going to happen )?"
+    r"(?:on|at) the (?:last|final) page|(?:last|final) page|upcoming|"
+    r"next chapter|spoilers?|spoil (?:me|it|for me))",
+    re.IGNORECASE,
+)
+
+
 def route_question(question, reader_position):
     """Prompt A: classify + extract. Returns dict; fails closed to page_summary."""
+    # Deterministic pre-route: explicit future asks never spend an LLM call
+    # and can never be misrouted by model wobble.
+    if FUTURE_RE.search(question or ""):
+        return {"intent": "future_request", "entities": [], "queries": []}
     prompt = PROMPT_A_SYSTEM.format(
         reader_position_json=str(reader_position), user_question=question)
-    try:
-        out = extract_json_object(generate(prompt, max_tokens=512, temperature=0.0))
-        intent = out.get("intent", "page_summary")
-        if intent not in INTENTS:
-            intent = "page_summary"
-        return {
-            "intent": intent,
-            "entities": [str(e) for e in out.get("entities", [])][:5],
-            "queries": [str(q) for q in out.get("queries", [])][:3],
-        }
-    except Exception:
-        return {"intent": "page_summary", "entities": [], "queries": []}
+    for _ in range(2):  # one retry: truncated/garbled outputs happen
+        try:
+            out = extract_json_object(generate(prompt, max_tokens=1024, temperature=0.0))
+            intent = out.get("intent", "page_summary")
+            if intent not in INTENTS:
+                continue
+            return {
+                "intent": intent,
+                "entities": [str(e) for e in out.get("entities", [])][:5],
+                "queries": [str(q) for q in out.get("queries", [])][:3],
+            }
+        except Exception:
+            continue
+    return {"intent": "page_summary", "entities": [], "queries": []}
 
 
 def _safe_chunks(rows, reader_pos, pos_key="global_position"):
@@ -187,6 +201,10 @@ def ask(question, page, page_text="", history=None, volume=VOLUME):
         user_question=question, page_text=(page_text or "")[:2500],
         novel_context=novel_ctx[:5000], state_log_context=state_ctx[:2500],
         wiki_context=wiki_ctx[:3500], recent_chat=fmt_history(history))
-    answer = generate(prompt, max_tokens=768, temperature=0.4)
+    answer = ""
+    for _ in range(2):  # one retry: empty responses happen
+        answer = generate(prompt, max_tokens=768, temperature=0.4).strip()
+        if answer:
+            break
     return {"answer": answer, "intent": intent,
             "entities": entities, "sources": sources}

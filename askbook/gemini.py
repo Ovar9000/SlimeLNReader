@@ -41,7 +41,7 @@ def _post(path, payload, timeout=60, tries=3):
             last = f"HTTP {e.code}: {err[:200]}"
             if e.code in (400, 401, 403):
                 raise RuntimeError(last)
-            if e.code == 429:
+            if e.code in (429, 503):
                 saw_429 = True
                 time.sleep(_retry_delay(err, attempt))
                 continue
@@ -124,6 +124,11 @@ def extract_json_array(text):
     Repairs trailing commas as a last resort.
     """
     import re
+
+    # A bare empty array is a legitimate "nothing to extract" answer.
+    inner = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip()).strip()
+    if inner == "[]":
+        return []
 
     def balanced(start):
         depth, in_str, esc = 0, False, False

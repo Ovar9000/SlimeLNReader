@@ -75,14 +75,16 @@ def run(pause=3.0, embed_only=False, offset=0, limit=0):
         if ch.startswith("wiki:"):
             done_titles.add(ch[5:])
     n_rows = 0
-    pending = [(t, u, c) for (t, u, c) in fresh if t not in done_titles]
+    # NB: extraction pending derives from ALL jobs in range (minus done),
+    # not from `fresh` — fresh only tracks what still needs embedding.
+    pending = [(t, u, c) for (t, u, c) in jobs if t not in done_titles]
     print(f"[wiki-extract] {len(pending)} chunks pending", flush=True)
     for i, (title, url, text) in enumerate(pending):
         prompt = PROMPT_C_SYSTEM.format(
             volume=22, chapter=f"wiki:{title}",
             page_start=TOTAL_PAGES, page_end=TOTAL_PAGES, chunk_text=text[:6000])
         try:
-            items = extract_json_array(generate(prompt, max_tokens=2048, temperature=0.0))
+            items = extract_json_array(generate(prompt, max_tokens=4096, temperature=0.0))
         except Exception as e:
             print(f"  [wiki-extract] failed {title}: {str(e)[:120]}", flush=True)
             continue
@@ -112,6 +114,9 @@ def run(pause=3.0, embed_only=False, offset=0, limit=0):
             print(f"  [wiki-extract] {i + 1}/{len(pending)} chunks", flush=True)
         time.sleep(pause)
     print(f"[wiki] {n_rows} wiki state rows", flush=True)
+    # NOTE: resume is title-granular (a title with any rows is skipped on
+    # rerun). Titles with partial failures are listed above as [wiki-extract]
+    # failures; recover them by deleting that title's rows and re-running.
     print("[wiki] counts:", {n: count(client, n) for n in
           ["NovelChunk", "WikiChunk", "CharacterStateLog"]}, flush=True)
     client.close()
