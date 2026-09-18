@@ -56,7 +56,7 @@ def extract_states(chunk_text, page_start, page_end, chapter, tries=2):
     last_err = None
     for _ in range(tries):
         try:
-            raw = generate(prompt, max_tokens=1024, temperature=0.0)
+            raw = generate(prompt, max_tokens=2048, temperature=0.0)
             items = extract_json_array(raw)
             break
         except Exception as e:
@@ -116,6 +116,10 @@ def backfill_aliases(client):
 
 
 def main():
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--offset", type=int, default=0)
     ap.add_argument("--limit", type=int, default=0)
@@ -131,7 +135,7 @@ def main():
 
         def _tee(*a, **k):
             _real_print(*a, **{**k, "flush": True})
-            print(*a, file=_log_fh, flush=True)
+            _real_print(*a, file=_log_fh, flush=True)
 
         import builtins
         builtins.print = _tee

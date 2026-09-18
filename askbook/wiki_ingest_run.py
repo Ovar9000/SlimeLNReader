@@ -23,7 +23,7 @@ def existing_urls(client):
             for o in col.iterator(include_vector=False)}
 
 
-def run(pause=3.0):
+def run(pause=3.0, embed_only=False, offset=0, limit=0):
     manifest_path = os.path.join(CACHE_DIR, "manifest.json")
     if not os.path.exists(manifest_path):
         print("[wiki] nothing cached; run --fetch-only first", flush=True)
@@ -39,12 +39,17 @@ def run(pause=3.0):
         page = json.load(open(os.path.join(CACHE_DIR, meta["file"]), encoding="utf-8"))
         for ch in chunk_text(page["extract"]):
             jobs.append((page["title"], page["url"], ch))
+    if offset:
+        jobs = jobs[offset:]
+    if limit:
+        jobs = jobs[:limit]
     fresh = [j for j in jobs if j[1] not in seen_urls]
     print(f"[wiki] {len(fresh)} new chunks from {len(manifest)} pages", flush=True)
 
     texts = [c for (_, _, c) in fresh]
     vecs = embed_texts(texts) if texts else []
-    for (title, url, text), vec in zip(fresh, texts, vecs):
+    for job, vec in zip(fresh, vecs):
+        title, url, text = job
         wcol.data.insert(properties={
             "text": text,
             "source_url": url,
@@ -56,15 +61,28 @@ def run(pause=3.0):
             "is_ground_truth": False,
         }, vector=vec)
     print(f"[wiki] inserted {len(fresh)} chunks", flush=True)
+    if embed_only:
+        print("[wiki] embed-only mode: skipping Prompt C extraction", flush=True)
+        print("[wiki] counts:", {n: count(client, n) for n in
+              ["NovelChunk", "WikiChunk", "CharacterStateLog"]}, flush=True)
+        client.close()
+        return
 
     # Prompt C over character content (source_type wiki, confidence capped low)
+    done_titles = set()
+    for obj in slog.iterator(include_vector=False):
+        ch = obj.properties.get("chapter", "")
+        if ch.startswith("wiki:"):
+            done_titles.add(ch[5:])
     n_rows = 0
-    for i, (title, url, text) in enumerate(fresh):
+    pending = [(t, u, c) for (t, u, c) in fresh if t not in done_titles]
+    print(f"[wiki-extract] {len(pending)} chunks pending", flush=True)
+    for i, (title, url, text) in enumerate(pending):
         prompt = PROMPT_C_SYSTEM.format(
             volume=22, chapter=f"wiki:{title}",
             page_start=TOTAL_PAGES, page_end=TOTAL_PAGES, chunk_text=text[:6000])
         try:
-            items = extract_json_array(generate(prompt, max_tokens=1024, temperature=0.0))
+            items = extract_json_array(generate(prompt, max_tokens=2048, temperature=0.0))
         except Exception as e:
             print(f"  [wiki-extract] failed {title}: {str(e)[:120]}", flush=True)
             continue
@@ -91,7 +109,7 @@ def run(pause=3.0):
             except Exception:
                 continue
         if (i + 1) % 10 == 0:
-            print(f"  [wiki-extract] {i + 1}/{len(fresh)} chunks", flush=True)
+            print(f"  [wiki-extract] {i + 1}/{len(pending)} chunks", flush=True)
         time.sleep(pause)
     print(f"[wiki] {n_rows} wiki state rows", flush=True)
     print("[wiki] counts:", {n: count(client, n) for n in

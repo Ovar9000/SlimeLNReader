@@ -157,16 +157,24 @@ def plan_chunks():
 
 
 def main():
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--fetch-only", action="store_true")
     ap.add_argument("--ingest", action="store_true")
+    ap.add_argument("--embed-only", action="store_true",
+                    help="with --ingest: embed+insert chunks, skip LLM extraction")
+    ap.add_argument("--offset", type=int, default=0)
+    ap.add_argument("--limit", type=int, default=0)
     args = ap.parse_args()
     if args.fetch_only or not args.ingest:
         manifest = fetch_all()
         print(f"[wiki] manifest: {len(manifest)} pages cached", flush=True)
     if args.ingest:
         from .wiki_ingest_run import run as run_ingest
-        run_ingest()
+        run_ingest(embed_only=args.embed_only, offset=args.offset, limit=args.limit or 0)
 
 
 if __name__ == "__main__":
